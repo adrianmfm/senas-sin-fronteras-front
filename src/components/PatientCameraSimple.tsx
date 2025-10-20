@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import Webcam from 'react-webcam';
+import { generateSimulatedKeypoints, normalizeFrames } from '@/utils/keypoints-helpers';
 
 const TARGET_FRAME_COUNT = 15;
 
@@ -28,35 +29,6 @@ const PatientCameraSimple: React.FC<Props> = ({ patientId, sessionId, onStop }) 
   const [isProcessing, setIsProcessing] = useState(false);
 
   const frameBuffer = useRef<number[][]>([]);
-
-  // Función simulada para extraer keypoints
-  const generateSimulatedKeypoints = useCallback((): number[] => {
-    // Simulamos los keypoints con el mismo formato que MediaPipe
-    // 33 pose + 468 face + 21 leftHand + 21 rightHand = 543 puntos × 3 coordenadas = 1629 valores
-    const keypoints: number[] = [];
-    
-    // Pose landmarks (33 puntos × 3 coordenadas = 99 valores)
-    for (let i = 0; i < 99; i++) {
-      keypoints.push(Math.random() * 0.8 + 0.1); // Valores entre 0.1 y 0.9
-    }
-    
-    // Face landmarks (468 puntos × 3 coordenadas = 1404 valores)
-    for (let i = 0; i < 1404; i++) {
-      keypoints.push(Math.random() * 0.6 + 0.2); // Valores entre 0.2 y 0.8
-    }
-    
-    // Left hand landmarks (21 puntos × 3 coordenadas = 63 valores)
-    for (let i = 0; i < 63; i++) {
-      keypoints.push(Math.random() * 0.7 + 0.15); // Valores entre 0.15 y 0.85
-    }
-    
-    // Right hand landmarks (21 puntos × 3 coordenadas = 63 valores)
-    for (let i = 0; i < 63; i++) {
-      keypoints.push(Math.random() * 0.7 + 0.15); // Valores entre 0.15 y 0.85
-    }
-    
-    return keypoints;
-  }, []);
 
   // Simular el procesamiento de frames
   const processSimulatedFrame = useCallback(() => {
@@ -108,7 +80,7 @@ const PatientCameraSimple: React.FC<Props> = ({ patientId, sessionId, onStop }) 
       // Continuar la animación
       animationFrameRef.current = requestAnimationFrame(processSimulatedFrame);
     }
-  }, [generateSimulatedKeypoints, patientId, isProcessing]);
+  }, [patientId, isProcessing]);
 
   // Conectar WebSocket
   useEffect(() => {
@@ -137,6 +109,7 @@ const PatientCameraSimple: React.FC<Props> = ({ patientId, sessionId, onStop }) 
     wsRef.current.onerror = (event) => {
       // Manejo más robusto del error WebSocket
       let errorMessage = 'Error de conexión WebSocket';
+      let isWarning = false; // Distinguir entre errores y advertencias
       const errorDetails: Record<string, string | number> = {
         timestamp: new Date().toISOString(),
         eventType: event.type || 'unknown'
@@ -155,7 +128,8 @@ const PatientCameraSimple: React.FC<Props> = ({ patientId, sessionId, onStop }) 
               errorMessage = 'Error al conectar con el servidor WebSocket';
               break;
             case WebSocket.CLOSED:
-              errorMessage = 'Conexión WebSocket cerrada inesperadamente';
+              errorMessage = 'Conexión WebSocket cerrada';
+              isWarning = true; // Esto es normal cuando se cierra la página
               break;
             default:
               errorMessage = 'Error durante la comunicación WebSocket';
@@ -165,8 +139,16 @@ const PatientCameraSimple: React.FC<Props> = ({ patientId, sessionId, onStop }) 
         errorDetails.note = 'No se pudo obtener información del WebSocket';
       }
       
-      console.error('Error en WebSocket del paciente (simple):', errorMessage);
-      console.error('Detalles del error:', errorDetails);
+      // Usar console.warn para eventos normales, console.error para errores reales
+      if (isWarning) {
+        console.warn('⚠️ WebSocket del paciente (simple) cerrado:', errorMessage);
+      } else {
+        console.error('❌ Error en WebSocket del paciente (simple):', errorMessage);
+      }
+      
+      if (errorDetails && Object.keys(errorDetails).length > 0) {
+        console.info('📋 Detalles:', errorDetails);
+      }
       setConnected(false);
       
       // Log adicional para debug

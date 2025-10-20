@@ -3,6 +3,12 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import Webcam from 'react-webcam';
+import { 
+  extractKeypointsForModel, 
+  thereHand, 
+  normalizeFrames, 
+  generateSimulatedKeypoints
+} from '@/utils/keypoints-helpers';
 
 const TARGET_FRAME_COUNT = 15;
 
@@ -10,13 +16,6 @@ interface Props {
   patientId: string;
   sessionId: string;
   onStop?: () => void;
-}
-
-interface KeypointsMessage {
-  from: string;
-  to: string;
-  type: 'keypoints_sequence';
-  data: number[][];
 }
 
 // Hook para cargar MediaPipe dinámicamente solo en el cliente
@@ -37,8 +36,8 @@ const useMediaPipe = () => {
           Camera: camera.Camera,
           drawConnectors: drawing.drawConnectors,
           HAND_CONNECTIONS: holistic.HAND_CONNECTIONS,
-          POSE_CONNECTIONS: holistic.POSE_CONNECTIONS,
-          FACEMESH_TESSELATION: holistic.FACEMESH_TESSELATION
+          //POSE_CONNECTIONS: holistic.POSE_CONNECTIONS,
+          //FACEMESH_TESSELATION: holistic.FACEMESH_TESSELATION
         });
         setIsLoaded(true);
       }).catch((error) => {
@@ -68,58 +67,22 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
   const { isLoaded, MediaPipe } = useMediaPipe();
   const frameBuffer = useRef<number[][]>([]);
 
-  // Función para extraer keypoints (igual que tu código original)
-  const extractKeypoints = (results: any): number[] => {
-    const pose = results.poseLandmarks
-      ? results.poseLandmarks.flatMap((lm: any) => [lm.x, lm.y, lm.z])
-      : Array(33 * 3).fill(0);
-    const face = results.faceLandmarks
-      ? results.faceLandmarks.flatMap((lm: any) => [lm.x, lm.y, lm.z])
-      : Array(468 * 3).fill(0);
-    const leftHand = results.leftHandLandmarks
-      ? results.leftHandLandmarks.flatMap((lm: any) => [lm.x, lm.y, lm.z])
-      : Array(21 * 3).fill(0);
-    const rightHand = results.rightHandLandmarks
-      ? results.rightHandLandmarks.flatMap((lm: any) => [lm.x, lm.y, lm.z])
-      : Array(21 * 3).fill(0);
-    return [...pose, ...face, ...leftHand, ...rightHand];
-  };
-
-  // Función simulada para cuando MediaPipe no esté disponible
-  const extractSimulatedKeypoints = (): number[] => {
-    const pose = Array(33 * 3).fill(0).map(() => Math.random() * 0.8 + 0.1);
-    const face = Array(468 * 3).fill(0).map(() => Math.random() * 0.6 + 0.2);
-    const leftHand = Array(21 * 3).fill(0).map(() => Math.random() * 0.4 + 0.3);
-    const rightHand = Array(21 * 3).fill(0).map(() => Math.random() * 0.4 + 0.3);
-    return [...pose, ...face, ...leftHand, ...rightHand];
-  };
-
-  const thereHand = (results: any) =>
-    !!(results.leftHandLandmarks || results.rightHandLandmarks);
-
-  const normalizeFrames = (frames: number[][], targetCount: number) => {
-    const currentCount = frames.length;
-    if (currentCount === targetCount) return frames;
-    const normalized: number[][] = [];
-    const indices = Array.from({ length: targetCount }, (_, i) =>
-      Math.floor((i * currentCount) / targetCount)
-    );
-    for (const idx of indices) normalized.push(frames[idx]);
-    return normalized;
-  };
-
-  const sendSequence = useCallback((sequence: number[][]) => {
+  const sendSequence = useCallback(async (sequence: number[][]) => {
+    // Send to WebSocket for doctor communication
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const message: KeypointsMessage = {
-        from: patientId,
-        to: 'modelo',
-        type: 'keypoints_sequence',
-        data: sequence
+      const message = {
+        type: 'frame_data',
+        patientId,
+        sessionId,
+        sequence
       };
       wsRef.current.send(JSON.stringify(message));
       setTranslationCount(prev => prev + 1);
+      console.log('� Secuencia enviada al doctor:', sequence.length, 'frames');
     }
-  }, [patientId]);
+
+    // Note: Predictions are now handled by the doctor, not the patient
+  }, [patientId, sessionId]);
 
   // Callback de resultados de MediaPipe (igual que tu código original)
   const onResults = useCallback((results: any) => {
@@ -165,7 +128,7 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
     }
 
     if (thereHand(results)) {
-      const kp = extractKeypoints(results);
+      const kp = extractKeypointsForModel(results);
       frameBuffer.current.push(kp);
 
       if (frameBuffer.current.length >= TARGET_FRAME_COUNT) {
@@ -208,7 +171,7 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
         
         // Simular detección de gestos
         if (Math.random() > 0.95) {
-          const kp = extractSimulatedKeypoints();
+          const kp = generateSimulatedKeypoints();
           frameBuffer.current.push(kp);
 
           if (frameBuffer.current.length >= TARGET_FRAME_COUNT) {
@@ -274,6 +237,7 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
         
         // Manejo más robusto del error WebSocket
         let errorMessage = 'Error de conexión WebSocket';
+        let isWarning = false; // Distinguir entre errores y advertencias
         const errorDetails: Record<string, string | number> = {
           timestamp: new Date().toISOString(),
           eventType: event.type || 'unknown',
@@ -293,7 +257,8 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
                 errorMessage = 'Error al conectar con el servidor WebSocket';
                 break;
               case WebSocket.CLOSED:
-                errorMessage = 'Conexión WebSocket cerrada inesperadamente';
+                errorMessage = 'Conexión WebSocket cerrada';
+                isWarning = true; // Esto es normal cuando se cierra la página
                 break;
               default:
                 errorMessage = 'Error durante la comunicación WebSocket';
@@ -303,8 +268,16 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
           errorDetails.note = 'No se pudo obtener información del WebSocket';
         }
         
-        console.error('❌ Error en WebSocket del paciente:', errorMessage);
-        console.error('📋 Detalles del error:', errorDetails);
+        // Usar console.warn para eventos normales, console.error para errores reales
+        if (isWarning) {
+          console.warn('⚠️ WebSocket del paciente cerrado:', errorMessage);
+        } else {
+          console.error('❌ Error en WebSocket del paciente:', errorMessage);
+        }
+        
+        if (errorDetails && Object.keys(errorDetails).length > 0) {
+          console.info('📋 Detalles:', errorDetails);
+        }
         setConnected(false);
         
         // Diagnóstico adicional
@@ -473,20 +446,20 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
 
   return (
     <div className="relative w-[640px] h-[480px] rounded-xl overflow-hidden shadow-xl border border-gray-700">
-      <Webcam 
-        ref={webcamRef} 
-        width={640} 
-        height={480} 
-        audio={false} 
-        className="rounded-xl" 
+      <Webcam
+        ref={webcamRef}
+        width={640}
+        height={480}
+        audio={false}
+        className="rounded-xl"
       />
-      <canvas 
-        ref={canvasRef} 
-        width={640} 
-        height={480} 
-        className="absolute top-0 left-0" 
+      <canvas
+        ref={canvasRef}
+        width={640}
+        height={480}
+        className="absolute top-0 left-0"
       />
-      
+
       {/* Indicadores de estado */}
       <div className="absolute top-4 left-4 space-y-2">
         <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
@@ -496,13 +469,13 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
           📊 Secuencias: {translationCount}
         </div>
         <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
-          👤 {patientId}
+           {patientId}
         </div>
         <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
           🏥 {sessionId}
         </div>
         <div className={`px-3 py-1 rounded-md text-sm text-white ${
-          processingMode === 'mediapipe' ? 'bg-green-600/80' : 
+          processingMode === 'mediapipe' ? 'bg-green-600/80' :
           processingMode === 'simulation' ? 'bg-orange-600/80' : 'bg-gray-600/80'
         }`}>
           {getModeDisplay()}
