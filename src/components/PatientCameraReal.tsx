@@ -1,16 +1,22 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
+ 
+ // Esperar varios frames sin manos antes de cortar palabra
+  const NO_HANDS_FRAMES_THRESHOLD = 10; // frames consecutivos sin manos
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import Webcam from 'react-webcam';
-import { 
-  extractKeypointsForModel, 
-  thereHand, 
-  normalizeFrames, 
-  generateSimulatedKeypoints
-} from '@/utils/keypoints-helpers';
 
-const TARGET_FRAME_COUNT = 15;
+// Utilidad simple para generar un uuid v4 (no críptico, solo para pruebas)
+function uuidv4() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+import Webcam from 'react-webcam';
+
+
+const TARGET_FRAME_COUNT = 30; // Debe coincidir con MODEL_FRAMES del backend
 
 interface Props {
   patientId: string;
@@ -51,6 +57,7 @@ const useMediaPipe = () => {
 };
 
 const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) => {
+  const noHandsFrames = useRef(0);
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const holisticRef = useRef<any>(null);
@@ -65,79 +72,102 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
   const [isIntentionalClose, setIsIntentionalClose] = useState(false);
 
   const { isLoaded, MediaPipe } = useMediaPipe();
-  const frameBuffer = useRef<number[][]>([]);
+  const wordBuffer = useRef<string[]>([]); // Frames JPEG de la palabra actual
+  const phraseBuffer = useRef<string[][]>([]); // Palabras (cada una: array de frames)
+  const handsDownSince = useRef<number | null>(null); // Timestamp cuando las manos bajaron
+  const lastHandsUp = useRef<number>(Date.now());
 
-  const sendSequence = useCallback(async (sequence: number[][]) => {
-    // Send to WebSocket for doctor communication
+  // Convierte un frame de video a JPEG base64 (data URL)
+  const getFrameAsJpegBase64 = (video: HTMLVideoElement): string => {
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.85); // calidad 85%
+    }
+    return '';
+  };
+
+  // Envía la frase completa (lista de palabras, cada una lista de frames JPEG base64)
+  const sendPhraseFrames = useCallback((words: string[][]) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      // Armar estructura exacta
+      const now = Date.now();
+      const wordsPayload = words.map(wordFrames =>
+        wordFrames.map((data, idx) => ({
+          ts: now + idx * 34, // simula timestamps crecientes
+          mime: 'image/jpeg',
+          data
+        }))
+      );
       const message = {
-        type: 'frame_data',
-        patientId,
+        type: 'phrase_frames',
         sessionId,
-        sequence
+        patientId,
+        phraseId: uuidv4(),
+        words: wordsPayload,
+        meta: { width: 640, height: 480, fps: 30 }
       };
       wsRef.current.send(JSON.stringify(message));
       setTranslationCount(prev => prev + 1);
-      console.log('� Secuencia enviada al doctor:', sequence.length, 'frames');
+      console.log('🟢 Enviada phrase_frames:', message);
     }
-
-    // Note: Predictions are now handled by the doctor, not the patient
   }, [patientId, sessionId]);
 
   // Callback de resultados de MediaPipe (igual que tu código original)
+  // Lógica para capturar frames JPEG y agruparlos por palabra
   const onResults = useCallback((results: any) => {
-    // Verificar que holistic sigue activo antes de procesar
-    if (!isHolisticActive) {
-      return;
-    }
-    
+    if (!isHolisticActive) return;
+
     if (canvasRef.current && MediaPipe) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
         ctx.save();
         ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         ctx.drawImage(results.image, 0, 0, canvasRef.current.width, canvasRef.current.height);
-
-        if (results.poseLandmarks && MediaPipe.POSE_CONNECTIONS) {
-          MediaPipe.drawConnectors(ctx, results.poseLandmarks, MediaPipe.POSE_CONNECTIONS, { 
-            color: '#00FF00', 
-            lineWidth: 2 
-          });
-        }
-        if (results.leftHandLandmarks && MediaPipe.HAND_CONNECTIONS) {
-          MediaPipe.drawConnectors(ctx, results.leftHandLandmarks, MediaPipe.HAND_CONNECTIONS, { 
-            color: '#FF0000', 
-            lineWidth: 2 
-          });
-        }
-        if (results.rightHandLandmarks && MediaPipe.HAND_CONNECTIONS) {
-          MediaPipe.drawConnectors(ctx, results.rightHandLandmarks, MediaPipe.HAND_CONNECTIONS, { 
-            color: '#0000FF', 
-            lineWidth: 2 
-          });
-        }
-        if (results.faceLandmarks && MediaPipe.FACEMESH_TESSELATION) {
-          MediaPipe.drawConnectors(ctx, results.faceLandmarks, MediaPipe.FACEMESH_TESSELATION, { 
-            color: '#FFFF00', 
-            lineWidth: 1 
-          });
-        }
-
         ctx.restore();
       }
     }
 
-    if (thereHand(results)) {
-      const kp = extractKeypointsForModel(results);
-      frameBuffer.current.push(kp);
+    // --- Detección de manos arriba/abajo ---
+    let handsUp = false;
+    if (results.leftHandLandmarks || results.rightHandLandmarks) {
+      // Si hay landmarks de alguna mano, consideramos "manos arriba"
+      handsUp = true;
+    }
 
-      if (frameBuffer.current.length >= TARGET_FRAME_COUNT) {
-        const sequence = normalizeFrames(frameBuffer.current, TARGET_FRAME_COUNT);
-        sendSequence(sequence);
-        frameBuffer.current = [];
+    const now = Date.now();
+
+    if (handsUp) {
+      lastHandsUp.current = now;
+      handsDownSince.current = null;
+      noHandsFrames.current = 0;
+      // Capturar frame JPEG base64
+      if (webcamRef.current?.video) {
+        const jpegData = getFrameAsJpegBase64(webcamRef.current.video);
+        wordBuffer.current.push(jpegData);
+      }
+    } else {
+      // Manos abajo
+      noHandsFrames.current += 1;
+      if (noHandsFrames.current === NO_HANDS_FRAMES_THRESHOLD) {
+        handsDownSince.current = now;
+        // Si hay frames en wordBuffer, termina la palabra
+        if (wordBuffer.current.length > 0) {
+          phraseBuffer.current.push([...wordBuffer.current]);
+          wordBuffer.current = [];
+        }
+      }
+      // Si las manos llevan más de 5 segundos abajo y hay palabras, enviar phrase_frames
+      if (handsDownSince.current && (now - handsDownSince.current > 5000) && phraseBuffer.current.length > 0) {
+        sendPhraseFrames(phraseBuffer.current);
+        phraseBuffer.current = [];
+        handsDownSince.current = null;
       }
     }
-  }, [MediaPipe, sendSequence, isHolisticActive]);
+  }, [MediaPipe, isHolisticActive, sendPhraseFrames]);
 
   // Procesamiento simulado cuando MediaPipe no está disponible
   const processSimulatedFrame = useCallback(() => {
@@ -170,23 +200,14 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
         }
         
         // Simular detección de gestos
-        if (Math.random() > 0.95) {
-          const kp = generateSimulatedKeypoints();
-          frameBuffer.current.push(kp);
-
-          if (frameBuffer.current.length >= TARGET_FRAME_COUNT) {
-            const sequence = normalizeFrames(frameBuffer.current, TARGET_FRAME_COUNT);
-            sendSequence(sequence);
-            frameBuffer.current = [];
-          }
-        }
+         // Simulación: aquí podrías agregar lógica de simulación si lo deseas
       }
     }
     
     if (processingMode === 'simulation') {
       animationFrameRef.current = requestAnimationFrame(processSimulatedFrame);
     }
-  }, [processingMode, sendSequence]);
+  }, [processingMode]);
 
   // WebSocket connection with improved error handling and debugging
   useEffect(() => {
@@ -460,7 +481,7 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
         className="absolute top-0 left-0"
       />
 
-      {/* Indicadores de estado */}
+      {/* Indicadores de estado (sin API) */}
       <div className="absolute top-4 left-4 space-y-2">
         <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
           {connected ? "🟢 WS Conectado" : "🔴 Desconectado"}

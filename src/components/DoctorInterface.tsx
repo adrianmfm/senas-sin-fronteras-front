@@ -27,8 +27,6 @@ const DoctorInterface: React.FC<Props> = ({ doctorId, sessionId, onDisconnect })
   const translationsEndRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Estado para saber si el servidor WebSocket puede conectarse a la API
-  const [apiConnected, setApiConnected] = useState(false);
 
   const scrollToBottom = () => {
     translationsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -87,27 +85,13 @@ const DoctorInterface: React.FC<Props> = ({ doctorId, sessionId, onDisconnect })
           } else if (data.type === 'prediction_result') {
             // Predicción ya procesada por el servidor WebSocket
             console.log('🤖 Predicción recibida del servidor:', data.prediction);
-            
-            // Marcar API como conectada ya que recibimos predicciones
-            setApiConnected(true);
-            
             const newTranslation: Translation = {
               id: `pred-${data.timestamp}-${Math.random()}`,
               text: `🤖 ${data.prediction}`,
               timestamp: data.timestamp
             };
-            
             setTranslations(prev => [...prev, newTranslation]);
             setLastTranslation(`🤖 ${data.prediction}`);
-          } else if (data.type === 'prediction_error') {
-            console.error('❌ Error de predicción del servidor:', data.error);
-            
-            // Marcar API como desconectada si hay errores
-            setApiConnected(false);
-          } else if (data.type === 'api_status') {
-            // Mensaje de estado de la API del servidor
-            console.log('📊 Estado de API:', data.connected);
-            setApiConnected(data.connected);
           } else if (data.type === 'registered') {
             console.log('Doctor registrado exitosamente:', data);
           }
@@ -239,13 +223,7 @@ const DoctorInterface: React.FC<Props> = ({ doctorId, sessionId, onDisconnect })
             {connected ? '🟢 WebSocket' : '🔴 WebSocket'}
           </div>
           
-          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-            apiConnected 
-              ? 'bg-blue-100 text-blue-800' 
-              : 'bg-orange-100 text-orange-800'
-          }`}>
-            {apiConnected ? '🤖 API Conectada' : '⚠️ API Desconectada'}
-          </div>
+
           
           {/* Botón de reconexión manual */}
           {!connected && (
@@ -319,14 +297,6 @@ const DoctorInterface: React.FC<Props> = ({ doctorId, sessionId, onDisconnect })
           </p>
         </div>
         
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <h3 className="font-semibold text-gray-700">API Predicción</h3>
-          <p className={`text-lg font-semibold ${
-            apiConnected ? 'text-blue-600' : 'text-orange-600'
-          }`}>
-            {apiConnected ? 'Conectada' : 'Desconectada'}
-          </p>
-        </div>
         
         <div className="bg-gray-50 p-4 rounded-lg">
           <h3 className="font-semibold text-gray-700">Última Actualización</h3>

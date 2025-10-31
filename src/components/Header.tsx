@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { LogOut, User, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
-
+import Image from 'next/image';
 export const Header = () => {
   const { user, logout, loading, isAuthenticated } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -29,13 +29,10 @@ export const Header = () => {
           
           {/* Logo/Brand */}
           <div className="flex items-center">
-            <Link href="/" className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-8 h-8 bg-blue-600 rounded-lg">
-                <span className="text-white font-bold text-sm">🤟</span>
+            <Link href="/" className="flex items-center">
+              <div className="flex items-center w-40 h-40 rounded-lg">
+                <Image src="/logo-final.svg" alt="logo" width={40} height={40} />
               </div>
-              <span className="text-xl font-bold text-gray-900 hidden sm:block">
-                Señas Sin Fronteras
-              </span>
             </Link>
           </div>
 
@@ -48,16 +45,16 @@ export const Header = () => {
               Inicio
             </Link>
             <Link 
-              href="/patient" 
-              className="text-gray-600 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-            >
-              🤟 Paciente
-            </Link>
-            <Link 
               href="/doctor" 
               className="text-gray-600 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
             >
-              🩺 Doctor
+              Doctor
+            </Link>
+            <Link 
+              href="/about" 
+              className="text-gray-600 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            >
+              Quiénes somos
             </Link>
           </nav>
 
@@ -129,21 +126,21 @@ export const Header = () => {
                 className="block px-3 py-2 text-gray-600 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
-                🏠 Inicio
-              </Link>
-              <Link 
-                href="/patient" 
-                className="block px-3 py-2 text-gray-600 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                🤟 Paciente
+                Inicio
               </Link>
               <Link 
                 href="/doctor" 
                 className="block px-3 py-2 text-gray-600 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
-                🩺 Doctor
+                Doctor
+              </Link>
+              <Link 
+                href="/about" 
+                className="block px-3 py-2 text-gray-600 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Quiénes somos
               </Link>
 
               {/* User Actions - Mobile */}

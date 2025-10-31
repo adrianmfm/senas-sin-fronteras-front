@@ -2,9 +2,9 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import Webcam from 'react-webcam';
-import { generateSimulatedKeypoints, normalizeFrames } from '@/utils/keypoints-helpers';
+import { generateSimulatedKeypoints } from '@/utils/keypoints-helpers';
 
-const TARGET_FRAME_COUNT = 15;
+const TARGET_FRAME_COUNT = 1000;
 
 interface Props {
   patientId: string;
@@ -43,20 +43,40 @@ const PatientCameraSimple: React.FC<Props> = ({ patientId, sessionId, onStop }) 
           if (ctx) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Dibujar puntos simulados (opcional, para visualización)
-            ctx.fillStyle = 'red';
-            for (let i = 0; i < 10; i++) {
-              const x = Math.random() * canvas.width;
-              const y = Math.random() * canvas.height;
+
+            // Generar keypoints simulados (pose+face+leftHand+rightHand)
+            const keypoints = generateSimulatedKeypoints();
+
+            // DIBUJAR SOLO LOS KEYPOINTS DE LAS MANOS
+            // leftHand: posiciones 99+1404 = 1503 hasta 1503+63
+            // rightHand: posiciones 1503+63 = 1566 hasta 1566+63
+            const leftHandStart = 99 + 1404;
+            const rightHandStart = leftHandStart + 63;
+            const handPoints = [];
+            // Left hand
+            for (let i = 0; i < 21; i++) {
+              const x = keypoints[leftHandStart + i * 3] * canvas.width;
+              const y = keypoints[leftHandStart + i * 3 + 1] * canvas.height;
+              handPoints.push({ x, y, color: '#00FF00' });
+            }
+            // Right hand
+            for (let i = 0; i < 21; i++) {
+              const x = keypoints[rightHandStart + i * 3] * canvas.width;
+              const y = keypoints[rightHandStart + i * 3 + 1] * canvas.height;
+              handPoints.push({ x, y, color: '#FF00FF' });
+            }
+            // Dibujar puntos
+            for (const pt of handPoints) {
               ctx.beginPath();
-              ctx.arc(x, y, 3, 0, 2 * Math.PI);
+              ctx.arc(pt.x, pt.y, 5, 0, 2 * Math.PI);
+              ctx.fillStyle = pt.color;
               ctx.fill();
             }
+            // (Opcional) dibujar líneas entre puntos de la mano
+            // ...
           }
         }
-        
-        // Generar keypoints simulados
+        // Guardar los keypoints simulados en el buffer
         const keypoints = generateSimulatedKeypoints();
         frameBuffer.current.push(keypoints);
 
@@ -69,7 +89,6 @@ const PatientCameraSimple: React.FC<Props> = ({ patientId, sessionId, onStop }) 
               type: 'keypoints_sequence',
               data: frameBuffer.current.slice() // Copiar el array
             };
-            
             wsRef.current.send(JSON.stringify(message));
             setTranslationCount(prev => prev + 1);
             frameBuffer.current = []; // Limpiar buffer
