@@ -241,14 +241,6 @@ const PatientCameraSimple: React.FC<Props> = ({ patientId, sessionId, onStop }) 
         </div>
       </div>
 
-      {/* Botón de detener */}
-      <button
-        onClick={handleStop}
-        className="absolute bottom-4 right-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-lg"
-      >
-        ⏹️ Detener
-      </button>
-
       {/* Información del modo simulación */}
       <div className="absolute bottom-20 left-4 right-4 bg-orange-100/90 border border-orange-300 rounded-lg p-3">
         <h4 className="font-semibold text-orange-800 text-sm mb-1">

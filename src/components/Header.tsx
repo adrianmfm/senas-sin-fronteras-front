@@ -5,10 +5,12 @@ import { LogOut, User, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 export const Header = () => {
   const { user, logout, loading, isAuthenticated } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const pathname = usePathname();
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -18,15 +20,18 @@ export const Header = () => {
   };
 
   // No mostrar header en página de login
-  if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+
+  // No mostrar header en páginas específicas
+  if (pathname === '/login' || pathname.startsWith('/patient')) {
     return null;
   }
+
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          
+
           {/* Logo/Brand */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
@@ -38,20 +43,20 @@ export const Header = () => {
 
           {/* Navigation - Desktop */}
           <nav className="hidden md:flex items-center space-x-6">
-            <Link 
-              href="/" 
+            <Link
+              href="/"
               className="text-gray-600 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
             >
               Inicio
             </Link>
-            <Link 
-              href="/doctor" 
+            <Link
+              href="/doctor"
               className="text-gray-600 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
             >
               Doctor
             </Link>
-            <Link 
-              href="/about" 
+            <Link
+              href="/about"
               className="text-gray-600 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors"
             >
               Quiénes somos
@@ -60,7 +65,7 @@ export const Header = () => {
 
           {/* User Menu */}
           <div className="flex items-center gap-4">
-            
+
             {/* Mobile menu button */}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -72,7 +77,7 @@ export const Header = () => {
             {/* User Actions */}
             {isAuthenticated ? (
               <div className="hidden md:flex items-center gap-3">
-                
+
                 {/* User Info */}
                 <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
                   <div className="flex items-center justify-center w-6 h-6 bg-blue-100 rounded-full">
@@ -119,24 +124,24 @@ export const Header = () => {
         {isMenuOpen && (
           <div className="md:hidden py-4 border-t border-gray-200">
             <div className="space-y-2">
-              
+
               {/* Navigation Links */}
-              <Link 
-                href="/" 
+              <Link
+                href="/"
                 className="block px-3 py-2 text-gray-600 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Inicio
               </Link>
-              <Link 
-                href="/doctor" 
+              <Link
+                href="/doctor"
                 className="block px-3 py-2 text-gray-600 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Doctor
               </Link>
-              <Link 
-                href="/about" 
+              <Link
+                href="/about"
                 className="block px-3 py-2 text-gray-600 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
@@ -146,7 +151,7 @@ export const Header = () => {
               {/* User Actions - Mobile */}
               {isAuthenticated ? (
                 <div className="pt-4 mt-4 border-t border-gray-200 space-y-2">
-                  
+
                   {/* User Info - Mobile */}
                   <div className="px-3 py-2 bg-gray-50 rounded-md">
                     <div className="flex items-center gap-2">

@@ -161,7 +161,7 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
         }
       }
       // Si las manos llevan más de 5 segundos abajo y hay palabras, enviar phrase_frames
-      if (handsDownSince.current && (now - handsDownSince.current > 5000) && phraseBuffer.current.length > 0) {
+      if (handsDownSince.current && (now - handsDownSince.current > 1000) && phraseBuffer.current.length > 0) {
         sendPhraseFrames(phraseBuffer.current);
         phraseBuffer.current = [];
         handsDownSince.current = null;
@@ -183,19 +183,7 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
             // Agregar indicadores visuales simulados
-            ctx.strokeStyle = '#00FF00';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(100, 100, 200, 150);
-            
-            ctx.strokeStyle = '#FF0000';
-            ctx.strokeRect(50, 50, 80, 80);
-            
-            ctx.strokeStyle = '#0000FF';
-            ctx.strokeRect(400, 60, 80, 80);
-            
-            ctx.fillStyle = '#FFFF00';
-            ctx.font = '16px Arial';
-            ctx.fillText('🤖 Modo Simulación', 10, 30);
+    
           }
         }
         
@@ -456,15 +444,6 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
     onStop?.();
   };
 
-  const getModeDisplay = () => {
-    switch (processingMode) {
-      case 'loading': return '⏳ Cargando...';
-      case 'mediapipe': return '🤖 MediaPipe ON';
-      case 'simulation': return '🔄 Simulación';
-      default: return '❓ Desconocido';
-    }
-  };
-
   return (
     <div className="relative w-[640px] h-[480px] rounded-xl overflow-hidden shadow-xl border border-gray-700">
       <Webcam
@@ -480,35 +459,6 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
         height={480}
         className="absolute top-0 left-0"
       />
-
-      {/* Indicadores de estado (sin API) */}
-      <div className="absolute top-4 left-4 space-y-2">
-        <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
-          {connected ? "🟢 WS Conectado" : "🔴 Desconectado"}
-        </div>
-        <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
-          📊 Secuencias: {translationCount}
-        </div>
-        <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
-           {patientId}
-        </div>
-        <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
-          🏥 {sessionId}
-        </div>
-        <div className={`px-3 py-1 rounded-md text-sm text-white ${
-          processingMode === 'mediapipe' ? 'bg-green-600/80' :
-          processingMode === 'simulation' ? 'bg-orange-600/80' : 'bg-gray-600/80'
-        }`}>
-          {getModeDisplay()}
-        </div>
-      </div>
-
-      <button
-        onClick={handleStop}
-        className="absolute bottom-4 right-4 px-5 py-2 bg-red-600 text-white font-semibold rounded-lg shadow hover:bg-red-700 transition-all"
-      >
-        ✖ Detener
-      </button>
 
       {/* Información del modo actual */}
       {processingMode === 'simulation' && (

@@ -22,7 +22,21 @@ export default function DoctorPage() {
     return `${prefix}-${timestamp}-${random}`.toUpperCase();
   };
 
+  const handleCreateSessionAndConnect = () => {
+  const newSessionId = generateSessionId();
+  const newDoctorId = `DOC-${user?.email?.split('@')[0] || 'doctor'}`;
+  
+  // Establecer estados
+  setSessionId(newSessionId);
+  setDoctorId(newDoctorId);
+  
+  // Conectar inmediatamente (ya que tenemos los valores)
+  setIsConnected(true);
+  
+};
+
   const handleCreateSession = () => {
+    
     const newSessionId = generateSessionId();
     
     setSessionId(newSessionId);
@@ -32,9 +46,9 @@ export default function DoctorPage() {
       setDoctorId(`DOC-${user?.email?.split('@')[0] || 'doctor'}`);
     }
 
-    // Abrir automáticamente la ventana del paciente con el sessionId
-    const patientUrl = `/patient?sessionId=${newSessionId}&autoConnect=true`;
-    window.open(patientUrl, '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
+    // // Abrir automáticamente la ventana del paciente con el sessionId
+    // const patientUrl = `/patient?sessionId=${newSessionId}&autoConnect=true`;
+    // window.open(patientUrl, '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
   };
 
   const handleConnect = () => {
@@ -114,93 +128,27 @@ export default function DoctorPage() {
           <div className="bg-green-50 border border-green-200 rounded-lg p-6">
             <h2 className="text-xl font-semibold text-green-800 mb-4 flex items-center">
               <Plus className="w-5 h-5 mr-2" />
-              Crear Nueva Sesión
+                 Comenzar Nueva Consulta
             </h2>
             <p className="text-green-700 mb-4">
-              Crea una nueva sesión y abre automáticamente la ventana del paciente conectada.
+              Inicia una nueva consulta médica con traducción de lengua de señas en tiempo real.
             </p>
             <div className="bg-green-100 rounded-md p-3 mb-4">
               <p className="text-sm text-green-800">
-                <strong>Al hacer clic:</strong> Se generará un ID único y se abrirá una nueva ventana 
-                para el paciente ya conectada automáticamente. ¡No necesita copiar ni compartir nada!
+                <strong>¿Cómo funciona?</strong> Al hacer clic, podrás comunicarte directamente 
+                con tu paciente. Luego podrás abrir la cámara del paciente desde el botón 
+                &quot;Abrir Cámara Paciente&quot; en la interfaz principal.
               </p>
             </div>
             <button
-              onClick={handleCreateSession}
+              onClick={handleCreateSessionAndConnect}
               className="w-full py-3 bg-green-600 text-white font-semibold rounded-md hover:bg-green-700 transition-colors flex items-center justify-center"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Crear Sesión + Abrir Ventana del Paciente
+              Iniciar consulta
             </button>
           </div>
 
-          {/* Mostrar sesión actual si existe */}
-          {sessionId && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-blue-800 mb-3">
-                Sesión Activa
-              </h3>
-              <div className="bg-white rounded-md p-4 border border-blue-300">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">ID de Sesión:</p>
-                    <p className="font-mono text-lg font-bold text-blue-800">{sessionId}</p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard(sessionId)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
-                  >
-                    {copiedSessionId === sessionId ? (
-                      <>
-                        <Check className="w-4 h-4 mr-1" />
-                        Copiado
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4 mr-1" />
-                        Copiar
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-              
-              <div className="mt-4 space-y-3">
-                <p className="text-sm text-blue-700">
-                  <strong>Estado de la sesión:</strong>
-                </p>
-                <div className="bg-blue-100 rounded-md p-3">
-                  <div className="text-sm text-blue-800 space-y-1">
-                    <p>✅ <strong>Sesión creada:</strong> {sessionId}</p>
-                    <p>✅ <strong>Ventana del paciente:</strong> Abierta automáticamente</p>
-                    <p>✅ <strong>Conexión:</strong> Establecida sin configuración manual</p>
-                    <p>🟡 <strong>Esperando:</strong> Inicio de la consulta</p>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={handleConnect}
-                disabled={!doctorId.trim() || !sessionId.trim()}
-                className="w-full mt-4 py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
-                Iniciar Sesión de Consulta
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Información adicional */}
-        <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <h3 className="font-semibold text-yellow-800 mb-2">
-            💡 Cómo funciona (Modo Automático)
-          </h3>
-          <ul className="text-sm text-yellow-700 space-y-1">
-            <li>• <strong>Crear Sesión:</strong> Genera ID único y abre ventana del paciente automáticamente</li>
-            <li>• <strong>Sin configuración manual:</strong> El paciente ya estará conectado en la nueva ventana</li>
-            <li>• <strong>Traducción automática:</strong> Las señas se traducen en tiempo real</li>
-            <li>• <strong>Comunicación directa:</strong> Ambas ventanas están sincronizadas</li>
-          </ul>
         </div>
       </div>
     </div>

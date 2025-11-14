@@ -45,28 +45,6 @@ export default function PatientPage() {
             {isAutoConnected ? 'Conectado Automáticamente' : 'Sistema de Traducción - Paciente'}
           </h1>
           
-          {isAutoConnected && (
-            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 max-w-md mx-auto">
-              <p className="text-green-800 font-semibold">✅ Sesión Iniciada por el Doctor</p>
-              <p className="text-green-700 text-sm mt-1">
-                ID de Sesión: <span className="font-mono">{sessionId}</span>
-              </p>
-              <p className="text-green-600 text-sm mt-2">
-                Su cámara está lista para detectar señas
-              </p>
-            </div>
-          )}
-          
-          {/* Alternar entre componentes */}
-          <div className="mb-4">
-            <button
-              onClick={() => setUseRealMediaPipe(!useRealMediaPipe)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              {useRealMediaPipe ? '🤖 Usar Simulación' : '🎯 Usar MediaPipe Real'}
-            </button>
-          </div>
-
           {useRealMediaPipe ? (
             <PatientCameraReal 
               patientId={patientId}
@@ -84,11 +62,6 @@ export default function PatientPage() {
           <div className="mt-6 text-gray-600">
             <p>Realice gestos con las manos para que sean traducidos</p>
             <p className="text-sm">El sistema captura y envía automáticamente las secuencias de gestos</p>
-            {isAutoConnected && (
-              <p className="text-sm text-green-600 mt-2">
-                ⚡ Su doctor puede ver las traducciones en tiempo real
-              </p>
-            )}
           </div>
         </div>
       </div>
@@ -145,34 +118,6 @@ export default function PatientPage() {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Ej: SES-ABC123-XYZ89"
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Modo de Procesamiento
-            </label>
-            <div className="flex space-x-4">
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="mode"
-                  checked={useRealMediaPipe}
-                  onChange={() => setUseRealMediaPipe(true)}
-                  className="mr-2"
-                />
-                <span className="text-sm">🤖 MediaPipe Real (Recomendado)</span>
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="mode"
-                  checked={!useRealMediaPipe}
-                  onChange={() => setUseRealMediaPipe(false)}
-                  className="mr-2"
-                />
-                <span className="text-sm">🔄 Modo Simulación</span>
-              </label>
-            </div>
           </div>
 
           <button
