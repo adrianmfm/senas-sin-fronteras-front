@@ -79,7 +79,7 @@ const DoctorInterface: React.FC<Props> = ({ doctorId, sessionId, onDisconnect })
         clearTimeout(reconnectTimeoutRef.current);
       }
 
-      wsRef.current = new WebSocket('ws://localhost:8080');
+      wsRef.current = new WebSocket('ws://localhost:8081');
 
       wsRef.current.onopen = () => {
         setConnected(true);

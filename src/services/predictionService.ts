@@ -18,7 +18,7 @@ export interface HealthResponse {
 }
 
 export class PredictionService {
-  private static readonly DEFAULT_BASE_URL = 'http://localhost:8080';
+  private static readonly DEFAULT_BASE_URL = 'http://localhost:8081';
   private static readonly DEFAULT_THRESHOLD = 0.7;
   
   private baseUrl: string;

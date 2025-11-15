@@ -203,7 +203,7 @@ wss.on('connection', (ws: WebSocket) => {
 });
 
 // Iniciar servidor en puerto 8080
-const PORT = 8080;
+const PORT = 8081;
 server.listen(PORT, () => {
   console.log(`Servidor WebSocket ejecutándose en puerto ${PORT}`);
 });
