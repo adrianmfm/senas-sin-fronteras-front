@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import PatientCameraSimple from '@/components/PatientCameraSimple';
 import PatientCameraReal from '@/components/PatientCameraReal';
 
-export default function PatientPage() {
+// Componente interno que usa useSearchParams
+function PatientPageContent() {
   const [isActive, setIsActive] = useState(false);
   const [patientId, setPatientId] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -154,5 +155,21 @@ export default function PatientPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Componente principal exportado con Suspense boundary
+export default function PatientPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando portal del paciente...</p>
+        </div>
+      </div>
+    }>
+      <PatientPageContent />
+    </Suspense>
   );
 }
