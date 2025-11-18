@@ -202,7 +202,7 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
     console.log('🔌 Intentando conectar WebSocket...', { patientId, sessionId });
     
     try {
-      wsRef.current = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || '');
+    wsRef.current = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || '');
       
       wsRef.current.onopen = () => {
         console.log('✅ WebSocket conectado exitosamente');
@@ -250,7 +250,7 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
         const errorDetails: Record<string, string | number> = {
           timestamp: new Date().toISOString(),
           eventType: event.type || 'unknown',
-          url: 'ws://4.228.56.10:8081'
+          url: process.env.NEXT_PUBLIC_WS_URL || ''
         };
         
         // Intentar obtener información del WebSocket de forma segura
