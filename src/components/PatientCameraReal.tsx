@@ -1,22 +1,27 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
+ 
+ // Esperar varios frames sin manos antes de cortar palabra
+  const NO_HANDS_FRAMES_THRESHOLD = 10; // frames consecutivos sin manos
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
+
+// Utilidad simple para generar un uuid v4 (no críptico, solo para pruebas)
+function uuidv4() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 import Webcam from 'react-webcam';
 
-const TARGET_FRAME_COUNT = 15;
+
+const TARGET_FRAME_COUNT = 30; // Debe coincidir con MODEL_FRAMES del backend
 
 interface Props {
   patientId: string;
   sessionId: string;
   onStop?: () => void;
-}
-
-interface KeypointsMessage {
-  from: string;
-  to: string;
-  type: 'keypoints_sequence';
-  data: number[][];
 }
 
 // Hook para cargar MediaPipe dinámicamente solo en el cliente
@@ -37,8 +42,8 @@ const useMediaPipe = () => {
           Camera: camera.Camera,
           drawConnectors: drawing.drawConnectors,
           HAND_CONNECTIONS: holistic.HAND_CONNECTIONS,
-          POSE_CONNECTIONS: holistic.POSE_CONNECTIONS,
-          FACEMESH_TESSELATION: holistic.FACEMESH_TESSELATION
+          //POSE_CONNECTIONS: holistic.POSE_CONNECTIONS,
+          //FACEMESH_TESSELATION: holistic.FACEMESH_TESSELATION
         });
         setIsLoaded(true);
       }).catch((error) => {
@@ -52,6 +57,7 @@ const useMediaPipe = () => {
 };
 
 const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) => {
+  const noHandsFrames = useRef(0);
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const holisticRef = useRef<any>(null);
@@ -66,115 +72,102 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
   const [isIntentionalClose, setIsIntentionalClose] = useState(false);
 
   const { isLoaded, MediaPipe } = useMediaPipe();
-  const frameBuffer = useRef<number[][]>([]);
+  const wordBuffer = useRef<string[]>([]); // Frames JPEG de la palabra actual
+  const phraseBuffer = useRef<string[][]>([]); // Palabras (cada una: array de frames)
+  const handsDownSince = useRef<number | null>(null); // Timestamp cuando las manos bajaron
+  const lastHandsUp = useRef<number>(Date.now());
 
-  // Función para extraer keypoints (igual que tu código original)
-  const extractKeypoints = (results: any): number[] => {
-    const pose = results.poseLandmarks
-      ? results.poseLandmarks.flatMap((lm: any) => [lm.x, lm.y, lm.z])
-      : Array(33 * 3).fill(0);
-    const face = results.faceLandmarks
-      ? results.faceLandmarks.flatMap((lm: any) => [lm.x, lm.y, lm.z])
-      : Array(468 * 3).fill(0);
-    const leftHand = results.leftHandLandmarks
-      ? results.leftHandLandmarks.flatMap((lm: any) => [lm.x, lm.y, lm.z])
-      : Array(21 * 3).fill(0);
-    const rightHand = results.rightHandLandmarks
-      ? results.rightHandLandmarks.flatMap((lm: any) => [lm.x, lm.y, lm.z])
-      : Array(21 * 3).fill(0);
-    return [...pose, ...face, ...leftHand, ...rightHand];
+  // Convierte un frame de video a JPEG base64 (data URL)
+  const getFrameAsJpegBase64 = (video: HTMLVideoElement): string => {
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.85); // calidad 85%
+    }
+    return '';
   };
 
-  // Función simulada para cuando MediaPipe no esté disponible
-  const extractSimulatedKeypoints = (): number[] => {
-    const pose = Array(33 * 3).fill(0).map(() => Math.random() * 0.8 + 0.1);
-    const face = Array(468 * 3).fill(0).map(() => Math.random() * 0.6 + 0.2);
-    const leftHand = Array(21 * 3).fill(0).map(() => Math.random() * 0.4 + 0.3);
-    const rightHand = Array(21 * 3).fill(0).map(() => Math.random() * 0.4 + 0.3);
-    return [...pose, ...face, ...leftHand, ...rightHand];
-  };
-
-  const thereHand = (results: any) =>
-    !!(results.leftHandLandmarks || results.rightHandLandmarks);
-
-  const normalizeFrames = (frames: number[][], targetCount: number) => {
-    const currentCount = frames.length;
-    if (currentCount === targetCount) return frames;
-    const normalized: number[][] = [];
-    const indices = Array.from({ length: targetCount }, (_, i) =>
-      Math.floor((i * currentCount) / targetCount)
-    );
-    for (const idx of indices) normalized.push(frames[idx]);
-    return normalized;
-  };
-
-  const sendSequence = useCallback((sequence: number[][]) => {
+  // Envía la frase completa (lista de palabras, cada una lista de frames JPEG base64)
+  const sendPhraseFrames = useCallback((words: string[][]) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const message: KeypointsMessage = {
-        from: patientId,
-        to: 'modelo',
-        type: 'keypoints_sequence',
-        data: sequence
+      // Armar estructura exacta
+      const now = Date.now();
+      const wordsPayload = words.map(wordFrames =>
+        wordFrames.map((data, idx) => ({
+          ts: now + idx * 34, // simula timestamps crecientes
+          mime: 'image/jpeg',
+          data
+        }))
+      );
+      const message = {
+        type: 'phrase_frames',
+        sessionId,
+        patientId,
+        phraseId: uuidv4(),
+        words: wordsPayload,
+        meta: { width: 640, height: 480, fps: 30 }
       };
       wsRef.current.send(JSON.stringify(message));
       setTranslationCount(prev => prev + 1);
+      console.log('🟢 Enviada phrase_frames:', message);
     }
-  }, [patientId]);
+  }, [patientId, sessionId]);
 
   // Callback de resultados de MediaPipe (igual que tu código original)
+  // Lógica para capturar frames JPEG y agruparlos por palabra
   const onResults = useCallback((results: any) => {
-    // Verificar que holistic sigue activo antes de procesar
-    if (!isHolisticActive) {
-      return;
-    }
-    
+    if (!isHolisticActive) return;
+
     if (canvasRef.current && MediaPipe) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
         ctx.save();
         ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         ctx.drawImage(results.image, 0, 0, canvasRef.current.width, canvasRef.current.height);
-
-        if (results.poseLandmarks && MediaPipe.POSE_CONNECTIONS) {
-          MediaPipe.drawConnectors(ctx, results.poseLandmarks, MediaPipe.POSE_CONNECTIONS, { 
-            color: '#00FF00', 
-            lineWidth: 2 
-          });
-        }
-        if (results.leftHandLandmarks && MediaPipe.HAND_CONNECTIONS) {
-          MediaPipe.drawConnectors(ctx, results.leftHandLandmarks, MediaPipe.HAND_CONNECTIONS, { 
-            color: '#FF0000', 
-            lineWidth: 2 
-          });
-        }
-        if (results.rightHandLandmarks && MediaPipe.HAND_CONNECTIONS) {
-          MediaPipe.drawConnectors(ctx, results.rightHandLandmarks, MediaPipe.HAND_CONNECTIONS, { 
-            color: '#0000FF', 
-            lineWidth: 2 
-          });
-        }
-        if (results.faceLandmarks && MediaPipe.FACEMESH_TESSELATION) {
-          MediaPipe.drawConnectors(ctx, results.faceLandmarks, MediaPipe.FACEMESH_TESSELATION, { 
-            color: '#FFFF00', 
-            lineWidth: 1 
-          });
-        }
-
         ctx.restore();
       }
     }
 
-    if (thereHand(results)) {
-      const kp = extractKeypoints(results);
-      frameBuffer.current.push(kp);
+    // --- Detección de manos arriba/abajo ---
+    let handsUp = false;
+    if (results.leftHandLandmarks || results.rightHandLandmarks) {
+      // Si hay landmarks de alguna mano, consideramos "manos arriba"
+      handsUp = true;
+    }
 
-      if (frameBuffer.current.length >= TARGET_FRAME_COUNT) {
-        const sequence = normalizeFrames(frameBuffer.current, TARGET_FRAME_COUNT);
-        sendSequence(sequence);
-        frameBuffer.current = [];
+    const now = Date.now();
+
+    if (handsUp) {
+      lastHandsUp.current = now;
+      handsDownSince.current = null;
+      noHandsFrames.current = 0;
+      // Capturar frame JPEG base64
+      if (webcamRef.current?.video) {
+        const jpegData = getFrameAsJpegBase64(webcamRef.current.video);
+        wordBuffer.current.push(jpegData);
+      }
+    } else {
+      // Manos abajo
+      noHandsFrames.current += 1;
+      if (noHandsFrames.current === NO_HANDS_FRAMES_THRESHOLD) {
+        handsDownSince.current = now;
+        // Si hay frames en wordBuffer, termina la palabra
+        if (wordBuffer.current.length > 0) {
+          phraseBuffer.current.push([...wordBuffer.current]);
+          wordBuffer.current = [];
+        }
+      }
+      // Si las manos llevan más de 5 segundos abajo y hay palabras, enviar phrase_frames
+      if (handsDownSince.current && (now - handsDownSince.current > 1000) && phraseBuffer.current.length > 0) {
+        sendPhraseFrames(phraseBuffer.current);
+        phraseBuffer.current = [];
+        handsDownSince.current = null;
       }
     }
-  }, [MediaPipe, sendSequence, isHolisticActive]);
+  }, [MediaPipe, isHolisticActive, sendPhraseFrames]);
 
   // Procesamiento simulado cuando MediaPipe no está disponible
   const processSimulatedFrame = useCallback(() => {
@@ -190,47 +183,26 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
             // Agregar indicadores visuales simulados
-            ctx.strokeStyle = '#00FF00';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(100, 100, 200, 150);
-            
-            ctx.strokeStyle = '#FF0000';
-            ctx.strokeRect(50, 50, 80, 80);
-            
-            ctx.strokeStyle = '#0000FF';
-            ctx.strokeRect(400, 60, 80, 80);
-            
-            ctx.fillStyle = '#FFFF00';
-            ctx.font = '16px Arial';
-            ctx.fillText('🤖 Modo Simulación', 10, 30);
+    
           }
         }
         
         // Simular detección de gestos
-        if (Math.random() > 0.95) {
-          const kp = extractSimulatedKeypoints();
-          frameBuffer.current.push(kp);
-
-          if (frameBuffer.current.length >= TARGET_FRAME_COUNT) {
-            const sequence = normalizeFrames(frameBuffer.current, TARGET_FRAME_COUNT);
-            sendSequence(sequence);
-            frameBuffer.current = [];
-          }
-        }
+         // Simulación: aquí podrías agregar lógica de simulación si lo deseas
       }
     }
     
     if (processingMode === 'simulation') {
       animationFrameRef.current = requestAnimationFrame(processSimulatedFrame);
     }
-  }, [processingMode, sendSequence]);
+  }, [processingMode]);
 
   // WebSocket connection with improved error handling and debugging
   useEffect(() => {
     console.log('🔌 Intentando conectar WebSocket...', { patientId, sessionId });
     
     try {
-      wsRef.current = new WebSocket('ws://localhost:8080');
+    wsRef.current = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || '');
       
       wsRef.current.onopen = () => {
         console.log('✅ WebSocket conectado exitosamente');
@@ -274,10 +246,11 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
         
         // Manejo más robusto del error WebSocket
         let errorMessage = 'Error de conexión WebSocket';
+        let isWarning = false; // Distinguir entre errores y advertencias
         const errorDetails: Record<string, string | number> = {
           timestamp: new Date().toISOString(),
           eventType: event.type || 'unknown',
-          url: 'ws://localhost:8080'
+          url: process.env.NEXT_PUBLIC_WS_URL || ''
         };
         
         // Intentar obtener información del WebSocket de forma segura
@@ -293,7 +266,8 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
                 errorMessage = 'Error al conectar con el servidor WebSocket';
                 break;
               case WebSocket.CLOSED:
-                errorMessage = 'Conexión WebSocket cerrada inesperadamente';
+                errorMessage = 'Conexión WebSocket cerrada';
+                isWarning = true; // Esto es normal cuando se cierra la página
                 break;
               default:
                 errorMessage = 'Error durante la comunicación WebSocket';
@@ -303,8 +277,16 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
           errorDetails.note = 'No se pudo obtener información del WebSocket';
         }
         
-        console.error('❌ Error en WebSocket del paciente:', errorMessage);
-        console.error('📋 Detalles del error:', errorDetails);
+        // Usar console.warn para eventos normales, console.error para errores reales
+        if (isWarning) {
+          console.warn('⚠️ WebSocket del paciente cerrado:', errorMessage);
+        } else {
+          console.error('❌ Error en WebSocket del paciente:', errorMessage);
+        }
+        
+        if (errorDetails && Object.keys(errorDetails).length > 0) {
+          console.info('📋 Detalles:', errorDetails);
+        }
         setConnected(false);
         
         // Diagnóstico adicional
@@ -462,59 +444,21 @@ const PatientCameraReal: React.FC<Props> = ({ patientId, sessionId, onStop }) =>
     onStop?.();
   };
 
-  const getModeDisplay = () => {
-    switch (processingMode) {
-      case 'loading': return '⏳ Cargando...';
-      case 'mediapipe': return '🤖 MediaPipe ON';
-      case 'simulation': return '🔄 Simulación';
-      default: return '❓ Desconocido';
-    }
-  };
-
   return (
     <div className="relative w-[640px] h-[480px] rounded-xl overflow-hidden shadow-xl border border-gray-700">
-      <Webcam 
-        ref={webcamRef} 
-        width={640} 
-        height={480} 
-        audio={false} 
-        className="rounded-xl" 
+      <Webcam
+        ref={webcamRef}
+        width={640}
+        height={480}
+        audio={false}
+        className="rounded-xl"
       />
-      <canvas 
-        ref={canvasRef} 
-        width={640} 
-        height={480} 
-        className="absolute top-0 left-0" 
+      <canvas
+        ref={canvasRef}
+        width={640}
+        height={480}
+        className="absolute top-0 left-0"
       />
-      
-      {/* Indicadores de estado */}
-      <div className="absolute top-4 left-4 space-y-2">
-        <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
-          {connected ? "🟢 WS Conectado" : "🔴 Desconectado"}
-        </div>
-        <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
-          📊 Secuencias: {translationCount}
-        </div>
-        <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
-          👤 {patientId}
-        </div>
-        <div className="bg-black/60 px-3 py-1 rounded-md text-sm text-white">
-          🏥 {sessionId}
-        </div>
-        <div className={`px-3 py-1 rounded-md text-sm text-white ${
-          processingMode === 'mediapipe' ? 'bg-green-600/80' : 
-          processingMode === 'simulation' ? 'bg-orange-600/80' : 'bg-gray-600/80'
-        }`}>
-          {getModeDisplay()}
-        </div>
-      </div>
-
-      <button
-        onClick={handleStop}
-        className="absolute bottom-4 right-4 px-5 py-2 bg-red-600 text-white font-semibold rounded-lg shadow hover:bg-red-700 transition-all"
-      >
-        ✖ Detener
-      </button>
 
       {/* Información del modo actual */}
       {processingMode === 'simulation' && (

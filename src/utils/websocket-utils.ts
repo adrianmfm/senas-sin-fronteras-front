@@ -15,6 +15,7 @@ export function createWebSocketErrorHandler(
   return (event: Event) => {
     // Manejo más robusto del error WebSocket
     let errorMessage = 'Error de conexión WebSocket';
+    let isWarning = false; // Distinguir entre errores y advertencias
     const errorDetails: Record<string, string | number> = {
       timestamp: new Date().toISOString(),
       eventType: event.type || 'unknown'
@@ -33,7 +34,8 @@ export function createWebSocketErrorHandler(
             errorMessage = 'Error al conectar con el servidor WebSocket';
             break;
           case WebSocket.CLOSED:
-            errorMessage = 'Conexión WebSocket cerrada inesperadamente';
+            errorMessage = 'Conexión WebSocket cerrada';
+            isWarning = true; // Esto es normal cuando se cierra la página
             break;
           default:
             errorMessage = 'Error durante la comunicación WebSocket';
@@ -43,8 +45,16 @@ export function createWebSocketErrorHandler(
       errorDetails.note = 'No se pudo obtener información del WebSocket';
     }
     
-    console.error(`Error en WebSocket (${componentName}):`, errorMessage);
-    console.error('Detalles del error:', errorDetails);
+    // Usar console.warn para eventos normales, console.error para errores reales
+    if (isWarning) {
+      console.warn(`⚠️ WebSocket (${componentName}) cerrado:`, errorMessage);
+    } else {
+      console.error(`❌ Error en WebSocket (${componentName}):`, errorMessage);
+    }
+    
+    if (errorDetails && Object.keys(errorDetails).length > 0) {
+      console.info('📋 Detalles:', errorDetails);
+    }
     
     setConnected(false);
     
@@ -52,8 +62,10 @@ export function createWebSocketErrorHandler(
       setConnectionError(errorMessage);
     }
     
-    // Log adicional para debug
-    console.warn('Verificar que el servidor WebSocket esté ejecutándose en puerto 8080');
+    // Solo mostrar advertencia sobre el servidor si es un error real de conexión
+    if (!isWarning) {
+      console.warn('🔍 Verificar que el servidor WebSocket esté ejecutándose en puerto 8080');
+    }
   };
 }
 
